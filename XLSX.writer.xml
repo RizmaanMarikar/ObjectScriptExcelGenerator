@@ -1,0 +1,713 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Export generator="Cache" version="25" zv="Cache for UNIX (SUSE Linux Enterprise Server for x86-64) 2017.2.2 (Build 865_3_19085U)" ts="2020-10-11 10:19:40">
+<Class name="XLSX.writer">
+<Description><![CDATA[
+The <class>Excel.Writer</class> creates a MS Excel Compliant  .xlsx file<p>
+It generates a complete xlsx document, with formatting and border widths
+We will be creating the minimum required document's needed for a fully compliant excel file.<p>
+Creates the following set of XML files/folders<p>
+<EXAMPLE>
+[Working Directory]
+	|_ "worksheet.xml"
+	|_ "workbook.xml"
+	|_ "styles.xml"
+	|_ "[Content_Types].xml"
+	|_ [_rels]
+		|_ "workbook.xml.rels"
+		|_ ".rels"
+</EXAMPLE>
+"workbook.xml"<p>
+The workbook is essentially the container for the various worksheets. The workbook is where you can reference the styles part,
+shared string tables, and any other pieces of information that apply to the entire Spreadsheet file. 
+The only interesting thing we did here was to create the sheet tag, which then references out worksheet via the r:id attribute<p>
+<p>
+"_rels/workbook.xml.rels"<p>
+We just need to create a relationship that has an id of rId1 so that it will match the reference from the workbook.xml part<p>
+<p>
+"worksheet.xml"<p>
+This is where our data sits. The first row in the sheet will have the column titles. 
+The next rows will only have data in the first columns.
+We will define the column widths for each column here, if not by default columns will be set to autofit<p>
+<p>
+"_rels/.rels"<p>
+How does a consuming application know where it should start when opening an OpenXML file? 
+The first place you always look is the package relationships file. 
+The package relationship file will always be located in the "_rels" directory, and it's always called ".rels". 
+We need to create an XML file that tells the consumer that "workbook.xml" is the first place you should go, and that this type of document is an Office Open XML document<p>
+<p>
+"[Content_Types].xml"<p>
+Every Office Open XML file must declare the content types used in the ZIP package. 
+That is done with the [Content_Types].xml file. 
+We currently have two parts in this document that we need to declare content types for. The first is the document.xml part; the second is the _rels/.rels part<p>
+<p>
+"styles.xml"<p>
+All the formatting that is needed to be applied will sit here <p>
+<p>
+The following usage example creates a simple xslx file<p>
+<EXAMPLE>
+
+set excelObj = ##class(Custom.MEXX.Rizmaan.Excel.Writer).%New(file)
+do excelObj.SetWorksheetName(file)
+set status = excelObj.BeginWorksheet()
+set row = 0
+set row = row+1
+;----------- excelObj.Cells(rowNumber,columnNumber,style,content)
+set status = excelObj.Cells(row,1,1,"Header1")
+set row = row+1
+set status = excelObj.Cells(row,1,2,"Content 1")
+set status = excelObj.EndWorksheet()
+
+</EXAMPLE>]]></Description>
+<IncludeCode>%occInclude,%occODBC</IncludeCode>
+<Super>%RegisteredObject,%XML.Adaptor</Super>
+<TimeChanged>65650,69298</TimeChanged>
+<TimeCreated>65334,34590.861665</TimeCreated>
+
+<Property name="FileName">
+<Description><![CDATA[
+<property>FileName</property> sets the file name on %New() method]]></Description>
+<Type>%String</Type>
+</Property>
+
+<Property name="WorkSheetName">
+<Description><![CDATA[
+<property>ExcelSheetName</property> sets the file on the <method>SetWorkSheetName</method> method]]></Description>
+<Type>%String</Type>
+<Parameter name="MAXLEN" value="255"/>
+</Property>
+
+<Property name="TempDirectory">
+<Description><![CDATA[
+<property>TempDirectory</property> Private property which holds the file structure needed for the excel gneration]]></Description>
+<Type>%String</Type>
+<Internal>1</Internal>
+<Private>1</Private>
+<Parameter name="MAXLEN" value="5000"/>
+</Property>
+
+<Property name="Charset">
+<Description><![CDATA[
+<property>Charset</property> is the charset to use for encoding the
+XML output.  The default depends upon the output destination.
+"UTF-8" is the default for output to files and binary streams.
+On a Unicode Cach&eacute;, "UTF-16 is the default for output to character streams and strings.
+On an 8 bit Cach&eacute;, the default charset for the locale is the default charset for output to character streams and strings.]]></Description>
+<Type>%String</Type>
+</Property>
+
+<Property name="ColumnWidthList">
+<Description><![CDATA[
+<property>ColumnWidthList</property>
+A list of float values
+By default autowidth property will be set]]></Description>
+<Type>%List</Type>
+</Property>
+
+<Property name="writer">
+<Type>%XML.Writer</Type>
+</Property>
+
+<Property name="xlsxFilePath">
+<Description>
+will return the File Path to xlsx  </Description>
+<Type>%String</Type>
+</Property>
+
+<Property name="maxNumberOfRows">
+<Type>%String</Type>
+</Property>
+
+<Property name="worksheet">
+<Type>%Stream.FileCharacter</Type>
+</Property>
+
+<Property name="rowCount">
+<Type>%Integer</Type>
+</Property>
+
+<Method name="%OnNew">
+<Description>
+instance methods</Description>
+<FormalSpec>initval:%String=""</FormalSpec>
+<Private>1</Private>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	#; pass filename via %New()
+	if (initval'=""){
+		set initval = $zstrip(initval,"*W")
+		set ..FileName=initval
+	}
+	else{
+		set temp=""
+		set length =15
+		for i=1:1:length set temp=temp_$char($random(26)+97)
+		set ..FileName=temp
+	}
+	set dir = $SYSTEM.Util.Collation(..FileName,6)
+	set status = ..SetTempDirectory(dir)
+	set status = ..SetCharset("")
+	set ..maxNumberOfRows = 1000000 ;prevents excel overflow error
+	Kill ^zExcelWriter($J)
+	Quit $$$OK
+]]></Implementation>
+</Method>
+
+<Method name="SetWorksheetName">
+<Description>
+sets the worksheet name 
+by default it is set to "sheet1"</Description>
+<FormalSpec>workSheetName:%String</FormalSpec>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	if (workSheetName'=""){
+		set:($LENGTH(workSheetName)>25) workSheetName = $Extract(workSheetName,1,25)_"..."
+		set ..WorkSheetName = workSheetName
+	}
+	else{
+		set ..WorkSheetName = "sheet1"
+	}
+	Quit $$$OK
+]]></Implementation>
+</Method>
+
+<Method name="SetCharset">
+<Description>
+By Default the charset will be "UTF-8"</Description>
+<FormalSpec>charSet:%String</FormalSpec>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	set:charSet'="" ..Charset=charSet
+	set:charSet="" ..Charset="UTF-8"
+	Quit $$$OK
+]]></Implementation>
+</Method>
+
+<Method name="SetMaxNumberOfRows">
+<Description>
+sets the maximum number of rows per excel sheet
+by default it is set to "1000000"</Description>
+<FormalSpec>rows:%String</FormalSpec>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	set:rows'="" ..maxNumberOfRows=rows
+	set:rows="" ..maxNumberOfRows=1000000
+	Quit $$$OK
+]]></Implementation>
+</Method>
+
+<Method name="BeginWorksheet">
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	set ..rowCount = 0
+	set status = ..CreateSupportingDirectories(..TempDirectory)
+	set status = ..GenerateWorkbookXML(..TempDirectory,..WorkSheetName)
+	set status = ..GenerateStylesXML(..TempDirectory)
+	set status = ..GenerateContentTypesXML(..TempDirectory)
+	set status = ..CreateRelsXML(..TempDirectory)
+	set status = ..CreateWorksheet()
+	quit $$$OK
+]]></Implementation>
+</Method>
+
+<Method name="EndWorksheet">
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	set (column,length)=""
+	set columnCount=0
+	
+	
+	//set status = ..EndWorkSheet1()
+	//set ..worksheet = ""
+	set xmlfile = ..TempDirectory_"worksheet.xml"
+	set stream = ##class(%Stream.FileCharacter).%New()
+	set sc=stream.LinkToFile(xmlfile)
+	do stream.WriteLine("<?xml version='1.0' encoding='UTF-8' standalone='yes'?>")
+	
+	do stream.WriteLine("<worksheet xmlns='http://schemas.openxmlformats.org/spreadsheetml/2006/main' xmlns:r='http://schemas.openxmlformats.org/officeDocument/2006/relationships' xmlns:mc='http://schemas.openxmlformats.org/markup-compatibility/2006' mc:Ignorable='x14ac xr xr2 xr3' xmlns:x14ac='http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac' xmlns:xr='http://schemas.microsoft.com/office/spreadsheetml/2014/revision' xmlns:xr2='http://schemas.microsoft.com/office/spreadsheetml/2015/revision2' xmlns:xr3='http://schemas.microsoft.com/office/spreadsheetml/2016/revision3' xr:uid='{343364D8-A6FA-470B-A481-5293A1027770}'>")
+	do stream.WriteLine("<cols>")
+	for{
+		set column = $order(^zExcelWriter($J,"ColumnWidth",column),1,length)
+		Quit:column=""
+		set columnCount = columnCount+1
+		set length = (length*1.125) ;Adjust the spacing based on the char length
+		set:(length>55) length=55 ;Maximum width will be 55 px
+		set:(length<=12) length=12 	;Default width will be 12 px
+
+		do stream.WriteLine("     <col min='"_column_"' max='"_column_"' width='"_length_"' bestFit='1' customWidth='1'/>")
+	}
+	//Dummy length for the column
+	if (columnCount=0){
+		do stream.WriteLine("     <col min='1' max='1' width='100' bestFit='1' customWidth='1'/>")
+	}
+	//set status=..writer.EndElement() ;cols
+	do stream.WriteLine("</cols>")
+	do stream.WriteLine("<sheetData>")
+	
+	//set worksheet1=##class(%FileCharacterStream).%New()
+	//set worksheet1.Filename=..TempDirectory_"worksheet1.xml"
+	if (..rowCount=0){
+		do stream.WriteLine("<row><c s='9' t='inlineStr'><is><t>No Records found......             </t></is></c></row>")
+	}
+	else{
+		do stream.CopyFrom(..worksheet)
+		set ..worksheet=""
+	}
+	
+	
+	do stream.WriteLine("</sheetData>")
+	do stream.WriteLine("</worksheet>")
+	
+	do stream.%Save()
+	K stream,worksheet1
+	do ##class(%File).Delete(..TempDirectory_"worksheet1.xml")
+
+	set status=..CleanUp()
+  	Quit $$$OK
+]]></Implementation>
+</Method>
+
+<Method name="CleanUp">
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	
+	set status = ..CreateXLSXFile(..TempDirectory,..FileName_".xlsx")
+	do ##class(%File).RemoveDirectoryTree(..TempDirectory)
+	K ^zExcelWriter($J)
+	Quit $$$OK
+]]></Implementation>
+</Method>
+
+<Method name="BeginRow">
+<Description>
+Depricated</Description>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	//quit:(..rowCount>..maxNumberOfRows) $$$NO
+	do ..worksheet.WriteLine("<row>")
+	Quit $$$OK
+]]></Implementation>
+</Method>
+
+<Method name="EndRow">
+<Description>
+Depricated</Description>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	//quit:(..rowCount>..maxNumberOfRows) $$$NO
+	do ..worksheet.WriteLine("</row>")
+	Quit $$$OK
+]]></Implementation>
+</Method>
+
+<Method name="Cells">
+<Description><![CDATA[
+<method>Cells</method> Writes the cells to excel <p>
+<ul>
+<li>row = row number</li>
+<li>column = column number</li>
+<li>style = ID</li>
+
+<table class="Summary" border="0" cellspacing="0" cellpadding="1">
+<tr><th>ID</th><th>Style</th><th>Excel Format</th> </tr>
+<tr><td>1</td><td>default</td><td>Text</td></tr>
+<tr><td>2</td><td>#;[Red]-#</td><td>Number</td></tr>
+<tr><td>3</td><td>#.##;[Red]-#.##</td><td>Number</td></tr>
+<tr><td>4</td><td>yyyy/mm/dd</td><td>Date [Used for date]</td></tr>
+<tr><td>5</td><td>hh:mm</td><td>Date </td></tr>
+<tr><td>6</td><td><B>Header</B> and center Aligned </td><td>Text</td></tr>
+<tr><td>7</td><td><B>Header2</B> Left Aligned</td><td>Text</td></tr>
+<tr><td>8</td><td>Good(Green Highlight)</td><td>General</td></tr>
+<tr><td>9</td><td>Bad(Red Highlight)</td><td>General</td></tr>
+<tr><td>10</td><td>Neutral(Orange Highlight)</td><td>General</td></tr>
+<tr><td>11</td><td>yyyy/mm/dd hh:mm</td><td>Date</td></tr>
+</table>
+<li>value = the cell value</li></ul>]]></Description>
+<FormalSpec>row:%String="",column:%String="",style:%String="",value:%String=""</FormalSpec>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	set ..rowCount = ..rowCount+1
+	//quit:(..rowCount>..maxNumberOfRows) $$$OK
+	
+	set:style="" style=1
+	set length = $length(value)
+	set:($G(^zExcelWriter($J,"ColumnWidth",column),0))<length ^zExcelWriter($J,"ColumnWidth",column)=length
+	
+	if (style="2")
+	{
+		set isValid = $ISVALIDNUM(value)
+		set:(isValid=0) style="1"
+	}
+	
+	set line = ""
+	set dqoute = $C(34)
+	set value1 = ""
+	
+	for i=1:1:$l(value) {
+	    s c=$e(value,i)
+	    if ($a(c)<128) {
+	        set value1 = value1_c
+	    }
+	}
+	set value = $ZCONVERT(value1,"O","XML")
+	
+	if ((style=2) || (style=3) || (style=4) || (style=11)){
+		set line = line_"     <c s="_dqoute_style_dqoute_"><v>"_value_"</v></c>"
+	}
+	else{
+		set line = line_"     <c s="_dqoute_style_dqoute_" t="_dqoute_"inlineStr"_dqoute_"><is><t>"_value_"</t></is></c>"
+	}
+
+	do ..worksheet.WriteLine(line)
+
+	Quit $$$OK
+]]></Implementation>
+</Method>
+
+<Method name="CreateWorksheet">
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	set xmlfile = ..TempDirectory_"worksheet1.xml"
+	try{
+		set ..worksheet = ##class(%Stream.FileCharacter).%New()
+		set sc=..worksheet.LinkToFile(xmlfile)
+		//Do ..worksheet.TranslateTableSet("UTF8")
+	}catch{}
+	return $$$OK
+]]></Implementation>
+</Method>
+
+<Method name="EndWorkSheet1">
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	do ..worksheet.%Save()
+	quit $$$OK
+]]></Implementation>
+</Method>
+
+<Method name="SetTempDirectory">
+<Description><![CDATA[
+<method>Close</method> Once all the data are set, generate the excel file will be generated
+Also creates the _rels folder
+Gets the fileName set by %New() method and creates the temp directory for processing]]></Description>
+<FormalSpec>fileName:%String</FormalSpec>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	set fileDirectory = ..getTempPath(fileName)
+	set ..TempDirectory = fileDirectory
+	Quit $$$OK
+]]></Implementation>
+</Method>
+
+<Method name="GetFilePath">
+<ReturnType>%String</ReturnType>
+<Implementation><![CDATA[	Quit ..xlsxFilePath
+]]></Implementation>
+</Method>
+
+<Method name="CreateSupportingDirectories">
+<Description><![CDATA[
+Gets the fileName set by %New() method and creates the temp directory for processing
+<method>CreateSupportingDirectories</method> creates a directory in the temp path using the specified <property>FilePath</property>
+Also creates the _rels folder]]></Description>
+<ClassMethod>1</ClassMethod>
+<FormalSpec>tempDirectoryPath:%String</FormalSpec>
+<ReturnType>%Status</ReturnType>
+<Implementation><![CDATA[
+	set status = $$$OK
+	set exists = ##class(%File).DirectoryExists(tempDirectoryPath)
+	try{
+		do:(exists) ##class(%File).RemoveDirectoryTree(tempDirectoryPath)
+		set status = ##class(%File).CreateDirectoryChain(tempDirectoryPath)
+		
+		set isunix=$zcvt($p($zv," ",3,$l($p($zv," (")," ")),"U")["UNIX"
+		if isunix {
+			set ext="/"
+		}else{
+			set ext="\"
+		}
+		set status = ##class(%File).CreateDirectoryChain(tempDirectoryPath_"_rels"_ext)
+	}
+	catch{
+		set status= $$$NO
+	}
+	return status
+]]></Implementation>
+</Method>
+
+<Method name="GenerateWorkbookXML">
+<Description>
+Create Static workbook.xml
+File 1 of 5
+workbook.xml
+main file which will contain the sheets and sheetnames
+Currently only one sheet per workbook is supported (Hardcoded the relationship)</Description>
+<ClassMethod>1</ClassMethod>
+<FormalSpec>tempDirectoryPath:%String,workSheetName</FormalSpec>
+<ReturnType>%Boolean</ReturnType>
+<Implementation><![CDATA[
+	set status =$$$OK
+	set xmlfile = tempDirectoryPath_"workbook.xml"
+	try{
+	set stream = ##class(%Stream.FileCharacter).%New()
+	set sc=stream.LinkToFile(xmlfile)
+	do stream.WriteLine("<?xml version='1.0' encoding='UTF-8' standalone='yes'?>")
+	do stream.WriteLine("<workbook xmlns='http://schemas.openxmlformats.org/spreadsheetml/2006/main' xmlns:r='http://schemas.openxmlformats.org/officeDocument/2006/relationships'>")
+	do stream.WriteLine("<sheets> <sheet name='"_workSheetName_"' sheetId='1' r:id='rId1'/>")
+	do stream.WriteLine("</sheets> </workbook>")
+	
+		do stream.%Save()
+	}catch{
+		set status=$$$NO
+	}
+	kill stream
+	return status
+]]></Implementation>
+</Method>
+
+<Method name="GenerateStylesXML">
+<Description>
+File 2 of 5
+styles.xml
+Has all the styles required for the workbook generation
+Needs to be tweaked more based on the user input</Description>
+<ClassMethod>1</ClassMethod>
+<FormalSpec>tempDirectoryPath:%String</FormalSpec>
+<ReturnType>%Boolean</ReturnType>
+<Implementation><![CDATA[
+	set status =$$$OK
+	set xmlfile = tempDirectoryPath_"styles.xml"
+	try{
+		set stream = ##class(%Stream.FileCharacter).%New()
+		set sc=stream.LinkToFile(xmlfile)
+ 		do stream.WriteLine("<?xml version=""1.0"" encoding=""UTF-8"" standalone=""yes""?>")
+		do stream.WriteLine("<styleSheet xmlns=""http://schemas.openxmlformats.org/spreadsheetml/2006/main"" xmlns:mc=""http://schemas.openxmlformats.org/markup-compatibility/2006"" mc:Ignorable=""x14ac x16r2 xr"" xmlns:x14ac=""http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac"" xmlns:x16r2=""http://schemas.microsoft.com/office/spreadsheetml/2015/02/main"" xmlns:xr=""http://schemas.microsoft.com/office/spreadsheetml/2014/revision"">")
+		do stream.WriteLine("<numFmts count=""4"">")
+		do stream.WriteLine("<numFmt numFmtId=""166"" formatCode=""#,##0;[Red]\-#,##0""/>")
+		do stream.WriteLine("<numFmt numFmtId=""168"" formatCode=""#,##0.00;[Red]\-#,##0.00""/>")
+		do stream.WriteLine("<numFmt numFmtId=""169"" formatCode=""dd\/mm\/yyyy;@""/>")
+		do stream.WriteLine("<numFmt numFmtId=""170"" formatCode=""dd/mm/yyyy\ hh:mm""/></numFmts>")
+		do stream.WriteLine("<fonts count=""5"" x14ac:knownFonts=""1"">")
+		do stream.WriteLine("<font><sz val=""10""/><color theme=""1""/><name val=""Calibri""/><family val=""2""/><scheme val=""minor""/></font>")
+		do stream.WriteLine("<font><sz val=""10""/><color rgb=""FF006100""/><name val=""Calibri""/><family val=""2""/><scheme val=""minor""/></font>")
+		do stream.WriteLine("<font><sz val=""10""/><color rgb=""FF9C0006""/><name val=""Calibri""/><family val=""2""/><scheme val=""minor""/></font>")
+		do stream.WriteLine("<font><sz val=""10""/><color rgb=""FF9C5700""/><name val=""Calibri""/><family val=""2""/><scheme val=""minor""/></font>")
+		do stream.WriteLine("<font><b/><sz val=""10""/><color theme=""1""/><name val=""Calibri""/><family val=""2""/><scheme val=""minor""/></font></fonts>")
+		do stream.WriteLine("<fills count=""5"">")
+		do stream.WriteLine("<fill><patternFill patternType=""none""/></fill>")
+		do stream.WriteLine("<fill><patternFill patternType=""gray125""/></fill>")
+		do stream.WriteLine("<fill><patternFill patternType=""solid""><fgColor rgb=""FFC6EFCE""/></patternFill></fill>")
+		do stream.WriteLine("<fill><patternFill patternType=""solid""><fgColor rgb=""FFFFC7CE""/></patternFill></fill>")
+		do stream.WriteLine("<fill><patternFill patternType=""solid""><fgColor rgb=""FFFFEB9C""/></patternFill></fill></fills>")
+		do stream.WriteLine("<borders count=""1""><border><left/><right/><top/><bottom/><diagonal/></border></borders>")
+		do stream.WriteLine("<cellStyleXfs count=""4"">")
+		do stream.WriteLine("<xf numFmtId=""0"" fontId=""0"" fillId=""0"" borderId=""0""/>")
+		do stream.WriteLine("<xf numFmtId=""0"" fontId=""1"" fillId=""2"" borderId=""0"" applyNumberFormat=""0"" applyBorder=""0"" applyAlignment=""0"" applyProtection=""0""/>")
+		do stream.WriteLine("<xf numFmtId=""0"" fontId=""2"" fillId=""3"" borderId=""0"" applyNumberFormat=""0"" applyBorder=""0"" applyAlignment=""0"" applyProtection=""0""/>")
+		do stream.WriteLine("<xf numFmtId=""0"" fontId=""3"" fillId=""4"" borderId=""0"" applyNumberFormat=""0"" applyBorder=""0"" applyAlignment=""0"" applyProtection=""0""/></cellStyleXfs>")
+		do stream.WriteLine("<cellXfs count=""12""><xf numFmtId=""0"" fontId=""0"" fillId=""0"" borderId=""0"" xfId=""0""/>")
+		do stream.WriteLine("<xf numFmtId=""49"" fontId=""0"" fillId=""0"" borderId=""0"" xfId=""0"" quotePrefix=""1"" applyNumberFormat=""1""/>")
+		do stream.WriteLine("<xf numFmtId=""166"" fontId=""0"" fillId=""0"" borderId=""0"" xfId=""0"" applyNumberFormat=""1""/>")
+		do stream.WriteLine("<xf numFmtId=""168"" fontId=""0"" fillId=""0"" borderId=""0"" xfId=""0"" applyNumberFormat=""1""/>")
+		do stream.WriteLine("<xf numFmtId=""169"" fontId=""0"" fillId=""0"" borderId=""0"" xfId=""0"" applyNumberFormat=""1""/>")
+		do stream.WriteLine("<xf numFmtId=""20"" fontId=""0"" fillId=""0"" borderId=""0"" xfId=""0"" applyNumberFormat=""1""/>")
+		do stream.WriteLine("<xf numFmtId=""49"" fontId=""4"" fillId=""0"" borderId=""0"" xfId=""0"" applyNumberFormat=""1"" applyFont=""1""/>")
+		do stream.WriteLine("<xf numFmtId=""49"" fontId=""4"" fillId=""0"" borderId=""0"" xfId=""0"" applyNumberFormat=""1"" applyFont=""1"" applyAlignment=""1""><alignment horizontal=""center""/>")
+		do stream.WriteLine("</xf>")
+		do stream.WriteLine("<xf numFmtId=""49"" fontId=""1"" fillId=""2"" borderId=""0"" xfId=""1"" applyNumberFormat=""1""/>")
+		do stream.WriteLine("<xf numFmtId=""0"" fontId=""2"" fillId=""3"" borderId=""0"" xfId=""2""/>")
+		do stream.WriteLine("<xf numFmtId=""0"" fontId=""3"" fillId=""4"" borderId=""0"" xfId=""3""/>")
+		do stream.WriteLine("<xf numFmtId=""170"" fontId=""0"" fillId=""0"" borderId=""0"" xfId=""0"" applyNumberFormat=""1""/></cellXfs>")
+		do stream.WriteLine("<cellStyles count=""4""><cellStyle name=""Bad"" xfId=""2"" builtinId=""27""/>")
+		do stream.WriteLine("<cellStyle name=""Good"" xfId=""1"" builtinId=""26""/><cellStyle name=""Neutral"" xfId=""3"" builtinId=""28""/>")
+		do stream.WriteLine("<cellStyle name=""Normal"" xfId=""0"" builtinId=""0""/></cellStyles><dxfs count=""0""/>")
+		do stream.WriteLine("<tableStyles count=""0"" defaultTableStyle=""TableStyleMedium2"" defaultPivotStyle=""PivotStyleLight16""/>	")
+		do stream.WriteLine("<extLst><ext uri=""{EB79DEF2-80B8-43e5-95BD-54CBDDF9020C}"" xmlns:x14=""http://schemas.microsoft.com/office/spreadsheetml/2009/9/main"">")
+		do stream.WriteLine("<x14:slicerStyles defaultSlicerStyle=""SlicerStyleLight1""/></ext><ext uri=""{9260A510-F301-46a8-8635-F512D64BE5F5}"" xmlns:x15=""http://schemas.microsoft.com/office/spreadsheetml/2010/11/main"">")
+		do stream.WriteLine("<x15:timelineStyles defaultTimelineStyle=""TimeSlicerStyleLight1""/></ext></extLst>")
+		do stream.WriteLine("</styleSheet>")
+		do stream.%Save()
+	}catch{
+		set status=$$$NO
+	}
+	kill stream
+	return status
+]]></Implementation>
+</Method>
+
+<Method name="GenerateContentTypesXML">
+<Description>
+File 3 of 5
+[Content_Types].xml
+Static file links workbook worksheet and stypes together</Description>
+<ClassMethod>1</ClassMethod>
+<FormalSpec>tempDirectoryPath:%String</FormalSpec>
+<ReturnType>%Boolean</ReturnType>
+<Implementation><![CDATA[
+	set status =$$$OK
+	set xmlfile = tempDirectoryPath_"[Content_Types].xml"
+	set stream = ##class(%Stream.FileCharacter).%New()
+	set sc=stream.LinkToFile(xmlfile)
+	try{
+		do stream.WriteLine("<?xml version='1.0' encoding='UTF-8' standalone='yes'?>")
+		do stream.WriteLine("<Types xmlns='http://schemas.openxmlformats.org/package/2006/content-types'>")
+  		do stream.WriteLine("<Default Extension='rels' ContentType='application/vnd.openxmlformats-package.relationships+xml'/>")
+    	do stream.WriteLine("<Override PartName='/workbook.xml' ContentType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml'/>")
+  		do stream.WriteLine("<Override PartName='/worksheet.xml' ContentType='application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml'/>")
+  		do stream.WriteLine("<Override PartName='/styles.xml' ContentType='application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml' />")
+		do stream.WriteLine("</Types>")
+		do stream.%Save()
+	}catch{
+		set status=$$$NO
+	}
+	kill stream
+	return status
+]]></Implementation>
+</Method>
+
+<Method name="CreateRelsXML">
+<Description>
+File 4 and 5
+_rels/workbook.xml.rels  _rels/.rels
+Static files since we are only forcusing on one sheet for the moment
+</Description>
+<ClassMethod>1</ClassMethod>
+<FormalSpec>fileDirectory:%String</FormalSpec>
+<ReturnType>%Boolean</ReturnType>
+<Implementation><![CDATA[
+	set status =$$$OK
+	
+	set isunix=$zcvt($p($zv," ",3,$l($p($zv," (")," ")),"U")["UNIX"
+	if isunix {
+		set ext="/"
+	}else{
+		set ext="\"
+	}
+	set xmlfile = fileDirectory_"_rels"_ext_"workbook.xml.rels"
+	set stream = ##class(%Stream.FileCharacter).%New()
+	set sc=stream.LinkToFile(xmlfile)
+	do stream.WriteLine("<?xml version='1.0' encoding='UTF-8' standalone='yes'?>")
+	do stream.WriteLine("<Relationships xmlns='http://schemas.openxmlformats.org/package/2006/relationships'>")
+  	do stream.WriteLine("<Relationship Id='rId1' Type='http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet' Target='worksheet.xml'/>")
+  	do stream.WriteLine("<Relationship Id='rId2' Type='http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles' Target='styles.xml' />")
+	do stream.WriteLine("</Relationships>")
+	try{
+		do stream.%Save()
+	}catch{
+		set status=$$$NO
+	}
+	kill stream
+	set xmlfile = fileDirectory_"_rels"_ext_".rels"
+	set stream = ##class(%Stream.FileCharacter).%New()
+	set sc=stream.LinkToFile(xmlfile)
+	
+	do stream.WriteLine("<?xml version='1.0' encoding='UTF-8' standalone='yes'?>")
+	do stream.WriteLine("<Relationships xmlns='http://schemas.openxmlformats.org/package/2006/relationships'>")
+  	do stream.WriteLine("<Relationship Id='rId1' Type='http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument' Target='workbook.xml'/>")
+	do stream.WriteLine("</Relationships>")
+	try{
+		do stream.%Save()
+	}catch{
+		set status=$$$NO
+	}
+	kill stream
+	return status
+]]></Implementation>
+</Method>
+
+<Method name="CreateXLSXFile">
+<FormalSpec>fileDirectory:%String,xlsxFile:%String</FormalSpec>
+<ReturnType>%Boolean</ReturnType>
+<Implementation><![CDATA[
+	set status = $$$YES
+	set isunix=$zcvt($p($zv," ",3,$l($p($zv," (")," ")),"U")["UNIX"
+	if isunix {
+		set ext="/"
+	}else{
+		set ext="\"
+	}
+	set filepath=^%SYS("TempDir")
+	set cmd ="cd "_fileDirectory_" && find . -type f | xargs zip .."_ext_xlsxFile
+	set status = $ZF(-1,cmd)
+	set ..xlsxFilePath = filepath_ext_xlsxFile
+	return status
+]]></Implementation>
+</Method>
+
+<Method name="getTempPath">
+<ClassMethod>1</ClassMethod>
+<FormalSpec>fileDirectory:%String</FormalSpec>
+<ReturnType>%String</ReturnType>
+<Implementation><![CDATA[
+	set filepath=^%SYS("TempDir")
+	set isunix=$zcvt($p($zv," ",3,$l($p($zv," (")," ")),"U")["UNIX"
+	if isunix {
+		set ext="/"
+	}else{
+		set ext="\"
+	}
+	set temp=""
+	set length =10
+	for i=1:1:length set temp=temp_$char($random(26)+97)
+	quit filepath_ext_fileDirectory_"_"_temp_ext
+]]></Implementation>
+</Method>
+
+<Method name="formatDateToExcelDate">
+<Description><![CDATA[
+<method>formatDateToExcelDate</method>  <p>
+In excel dates are reprecented as numbers, same as chache, but begins from 1/1/1900 <p>
+When using date's please use with style=4]]></Description>
+<ClassMethod>1</ClassMethod>
+<FormalSpec>date:%String,dateFormat:%String</FormalSpec>
+<ReturnType>%String</ReturnType>
+<Implementation><![CDATA[
+	
+	// calculate the date
+	// the cacheDate is 0 = 31/12/1840
+	// Excel            0 = 31/12/1899 (in Excel shown as 0/01/1900 !)
+	// Due to a bug in Excel (for compatibility ! with Lotus-1-2-3)
+	// the 29-Feb-1900 is included even 1900 was NOT a lap year
+	// Excel considers it a valid date !!
+	// Calculate for Excel dates 0-59 (01.Jan-28.Feb) plus another day
+	// $ZDH(18991231,8) --> 21549 (-1) --> 21548
+	set dt=""
+	try {
+		set dt=$SYSTEM.SQL.TODATE(date,dateFormat)
+		set dt=dt-21548+$select(dt<60:1,1:0)
+		/*
+	      set dt=$SYSTEM.SQL.TODATE(date,dateFormat)
+	      if (dt'=""){
+		     set dt = $SYSTEM.SQL.DATEDIFF("dd","1899-12-30",dt) ;convert to excel number format date count begins from 1/1/1900
+	      }
+	      else{
+		     set dt=""
+	      }
+	      */
+   }
+   catch{set dt=""}
+   return dt
+]]></Implementation>
+</Method>
+
+<Method name="formatTimeToExcelTime">
+<ClassMethod>1</ClassMethod>
+<FormalSpec>time:%String</FormalSpec>
+<ReturnType>%String</ReturnType>
+<Implementation><![CDATA[
+	// Always assumes time is in hh:mm:ss / hh:mm:ss AM/PM
+	
+	//Excel time is calculated as a fraction of the number of seconds
+	// $zth("16:49") = 60540
+	// number of seconds per day 86400
+	// 60450/86400 rounded to 12 decimals
+	//$fnumber(60450/86400,,12)
+	return:time="" +time
+	try{
+		set time = $zdt(time)
+		set time = $fnumber(time/86400,,12)
+		return +time
+	}catch{return +time}
+]]></Implementation>
+</Method>
+</Class>
+</Export>
